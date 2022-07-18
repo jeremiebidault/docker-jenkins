@@ -1,0 +1,123 @@
+unclassified:
+  location:
+    url: https://my.awesome.jenkins.url
+
+credentials:
+  system:
+    domainCredentials:
+    - credentials:
+      - usernamePassword:
+          description: gitlab
+          id: gitlab
+          password: myawesomepassword
+          scope: GLOBAL
+          username: myawesomeusername
+
+security:
+  GlobalJobDslSecurityConfiguration:
+    useScriptSecurity: false
+
+jenkins:
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: password
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  numExecutors: 0
+  clouds:
+  - docker:
+      dockerApi:
+        connectTimeout: 60
+        dockerHost:
+          uri: unix:///var/run/docker.sock
+        readTimeout: 60
+      name: docker
+      templates:
+      - connector:
+          jnlp:
+            entryPointArgumentsString: |-
+              sh
+              -c
+              wget ^${JENKINS_URL}jnlpJars/agent.jar && java -jar agent.jar -jnlpUrl ^${JENKINS_URL}computer/^${NODE_NAME}/jenkins-agent.jnlp -secret ^${JNLP_SECRET}
+            jnlpLauncher:
+              workDirSettings:
+                disabled: false
+                failIfWorkDirIsMissing: false
+                internalDir: remoting
+        dockerTemplateBase:
+          cpuPeriod: 0
+          cpuQuota: 0
+          image: aarto/jenkins-agent:python
+        labelString: python
+        name: python
+        pullStrategy: PULL_ALWAYS
+        pullTimeout: 300
+
+jobs:
+- script: >
+    folder('test') {
+        displayName('test')
+    }
+- script: >
+    pipelineJob('test/python') {
+        definition {
+            cps {
+                script('''\
+                    pipeline {
+                        agent {
+                            label 'python'
+                        }
+                        stages {
+                            stage ('test') {
+                                steps {
+                                    echo "hello"
+                                }
+                            }
+                        }
+                    }'''.stripIndent())
+                sandbox()
+            }
+        }
+    }
+- script: |
+    pipelineJob('test/jobdsl') {
+        definition {
+            cps {
+                script('''\
+                    pipeline {
+                        agent {
+                            label 'python'
+                        }
+                        options {
+                            buildDiscarder(
+                                logRotator(
+                                    daysToKeepStr: '-1',
+                                    numToKeepStr: '5',
+                                    artifactDaysToKeepStr: '-1',
+                                    artifactNumToKeepStr: '5'
+                                )
+                            )
+                            disableConcurrentBuilds()
+                        }
+                        stages {
+                            stage('shell') {
+                                steps {
+                                    script {
+                                        sh \'\'\'
+                                            pwd
+                                            env
+                                            python -V
+                                        \'\'\'
+                                    }
+                                }
+                            }
+                        }
+                    }'''.stripIndent())
+                sandbox()
+            }
+        }
+    }
